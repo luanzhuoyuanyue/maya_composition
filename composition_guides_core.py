@@ -1,6 +1,9 @@
 from __future__ import division
 
 import math
+import hashlib
+import json
+import re
 
 try:
     _STRING_TYPES = (basestring,)
@@ -160,3 +163,47 @@ def compose_geometry(options, pixel_width, pixel_height):
             center.get("center_box", center.get("box", False)), center.get("diamond", False),
             pixel_width, pixel_height, center.get("circle_steps", 64)))
     return result
+
+
+def map_render_gate(viewport, viewing_frustum, rendering_frustum):
+    origin_x, origin_y, width, height = viewport
+    view_left, view_right, view_bottom, view_top = viewing_frustum
+    render_left, render_right, render_bottom, render_top = rendering_frustum
+    if width <= 0 or height <= 0:
+        raise ValueError("viewport dimensions must be positive")
+    view_width = view_right - view_left
+    view_height = view_top - view_bottom
+    if view_width <= 0 or view_height <= 0:
+        raise ValueError("viewing frustum dimensions must be positive")
+    left_px = origin_x + width * (render_left - view_left) / view_width
+    right_px = origin_x + width * (render_right - view_left) / view_width
+    bottom_px = origin_y + height * (render_bottom - view_bottom) / view_height
+    top_px = origin_y + height * (render_top - view_bottom) / view_height
+    return (left_px, bottom_px, right_px - left_px, top_px - bottom_px)
+
+
+def map_point_to_gate(point, gate):
+    point_x, point_y = point
+    left_px, bottom_px, width, height = gate
+    return (left_px + width * point_x, bottom_px + height * point_y)
+
+
+def render_signature(settings):
+    payload = json.dumps(settings, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=True).encode("utf-8")
+    return hashlib.sha1(payload).hexdigest()
+
+
+def safe_identifier(value):
+    if not isinstance(value, _STRING_TYPES):
+        raise TypeError("value must be a string")
+    try:
+        text_type = unicode
+    except NameError:
+        text_type = str
+    if not isinstance(value, text_type):
+        value = value.decode("ascii", "ignore")
+    text = re.sub(u"[^\x00-\x7f]", u"", value)
+    text = re.sub(u"[\s<>:\"/\\\\|?*]+", u"_", text)
+    text = re.sub(u"_+", u"_", text).strip(u"_")
+    return text or u"unnamed"
