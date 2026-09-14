@@ -7,6 +7,10 @@ import composition_guides_core as core
 
 
 class CoreGeometryTests(unittest.TestCase):
+    def test_python_2_and_3_string_type_alias_is_declared(self):
+        self.assertTrue(hasattr(core, "_STRING_TYPES"))
+        self.assertTrue(isinstance("top_left", core._STRING_TYPES))
+
     def test_thirds_has_four_expected_lines(self):
         geometry = core.thirds_geometry()
         self.assertEqual(geometry["polylines"], [])

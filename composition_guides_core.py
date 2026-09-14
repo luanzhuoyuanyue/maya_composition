@@ -2,6 +2,11 @@ from __future__ import division
 
 import math
 
+try:
+    _STRING_TYPES = (basestring,)
+except NameError:
+    _STRING_TYPES = (str,)
+
 
 def empty_geometry():
     return {"segments": [], "polylines": []}
@@ -140,11 +145,11 @@ def compose_geometry(options, pixel_width, pixel_height):
         _append_geometry(result, thirds_geometry())
     spiral = options.get("golden_spiral")
     if spiral:
-        orientation = spiral if isinstance(spiral, str) else options.get("spiral_orientation", "top_left")
+        orientation = spiral if isinstance(spiral, _STRING_TYPES) else options.get("spiral_orientation", "top_left")
         _append_geometry(result, golden_spiral_geometry(orientation, options.get("spiral_steps", 96)))
     triangle = options.get("golden_triangle")
     if triangle:
-        direction = triangle if isinstance(triangle, str) else options.get("triangle_direction", "down")
+        direction = triangle if isinstance(triangle, _STRING_TYPES) else options.get("triangle_direction", "down")
         _append_geometry(result, golden_triangle_geometry(direction, pixel_width, pixel_height))
     _append_geometry(result, diagonal_geometry(options.get("downward", options.get("diagonals_down", False)),
                                               options.get("upward", options.get("diagonals_up", False))))
