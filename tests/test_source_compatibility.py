@@ -111,6 +111,49 @@ class SourceCompatibilityTests(unittest.TestCase):
         for token in DRAW_TOKENS:
             self.assertIn(token, source)
 
+    def test_plugin_opts_into_python_api_2(self):
+        source = _read_source("composition_guides_plugin.py")
+        module = ast.parse(source, filename="composition_guides_plugin.py")
+        markers = [
+            statement for statement in module.body
+            if isinstance(statement, ast.FunctionDef)
+            and statement.name == "maya_useNewAPI"
+        ]
+        self.assertEqual(1, len(markers))
+        self.assertEqual([], markers[0].args.args)
+
+    def test_draw_override_supports_all_viewport_2_backends(self):
+        source = _read_source("composition_guides_plugin.py")
+        module = ast.parse(source, filename="composition_guides_plugin.py")
+        draw_classes = [
+            statement for statement in module.body
+            if isinstance(statement, ast.ClassDef)
+            and statement.name == "CompositionGuidesDrawOverride"
+        ]
+        self.assertEqual(1, len(draw_classes))
+        methods = [
+            statement for statement in draw_classes[0].body
+            if isinstance(statement, ast.FunctionDef)
+            and statement.name == "supportedDrawAPIs"
+        ]
+        self.assertEqual(1, len(methods))
+        returns = [
+            statement for statement in methods[0].body
+            if isinstance(statement, ast.Return)
+        ]
+        self.assertEqual(1, len(returns))
+        attributes = set(
+            node.attr for node in ast.walk(returns[0].value)
+            if isinstance(node, ast.Attribute) and node.attr.startswith("k")
+        )
+        self.assertEqual(set((
+            "kOpenGL", "kOpenGLCoreProfile", "kDirectX11")), attributes)
+        bitwise_ors = [
+            node for node in ast.walk(returns[0].value)
+            if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr)
+        ]
+        self.assertEqual(2, len(bitwise_ors))
+
 
 if __name__ == "__main__":
     unittest.main()

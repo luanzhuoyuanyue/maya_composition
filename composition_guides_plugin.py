@@ -8,6 +8,10 @@ import maya.cmds as cmds
 import composition_guides_core as core
 
 
+def maya_useNewAPI():
+    pass
+
+
 NODE_NAME = "compositionGuidesLocator"
 NODE_TYPE_ID = om.MTypeId(0x00087001)
 DRAW_CLASSIFICATION = "drawdb/geometry/compositionGuidesLocator"
@@ -287,6 +291,13 @@ class CompositionGuidesDrawOverride(omr.MPxDrawOverride):
 
     def hasUIDrawables(self):
         return True
+
+    def supportedDrawAPIs(self):
+        return (
+            omr.MRenderer.kOpenGL |
+            omr.MRenderer.kOpenGLCoreProfile |
+            omr.MRenderer.kDirectX11
+        )
 
     def prepareForDraw(self, obj_path, camera_path, frame_context, old_data):
         if isinstance(old_data, GuideDrawData):
