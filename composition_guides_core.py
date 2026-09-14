@@ -204,6 +204,6 @@ def safe_identifier(value):
     if not isinstance(value, text_type):
         value = value.decode("ascii", "ignore")
     text = re.sub(u"[^\x00-\x7f]", u"", value)
-    text = re.sub(u"[\s<>:\"/\\\\|?*]+", u"_", text)
+    text = re.sub(u"[\x00-\x1f\s<>:\"/\\\\|?*]+", u"_", text)
     text = re.sub(u"_+", u"_", text).strip(u"_")
     return text or u"unnamed"

@@ -72,6 +72,10 @@ class GateAndSignatureTests(unittest.TestCase):
         self.assertEqual(core.safe_identifier(" shot 01:/\\  take? "),
                          "shot_01_take")
 
+    def test_safe_identifier_collapses_control_and_forbidden_runs(self):
+        self.assertEqual(core.safe_identifier(u"a\x01\x02:/\\\x1fb"),
+                         "a_b")
+
     def test_safe_identifier_returns_unnamed_for_all_non_ascii_input(self):
         self.assertEqual(core.safe_identifier(u"\u76f8\u673a"), "unnamed")
 
