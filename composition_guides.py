@@ -299,6 +299,10 @@ def _cache_directory():
     raise GuideError(u"无法写入构图 PNG 缓存目录。")
 
 
+def _maya_image_path(path):
+    return os.path.normpath(path).replace("\\", "/")
+
+
 def _uuid(node):
     return cmds.ls(node, uuid=True)[0]
 
@@ -444,7 +448,8 @@ def refresh_render_overlay(camera_shape, force=False):
         raise GuideError(u"该相机尚未创建构图辅助线。")
     settings = _render_settings(config, camera_shape)
     signature = core.render_signature(settings)
-    path = os.path.join(_cache_directory(), _cache_filename(config, camera_shape))
+    path = _maya_image_path(os.path.join(
+        _cache_directory(), _cache_filename(config, camera_shape)))
     if (force or signature != cmds.getAttr(config + ".renderSignature") or
             path != cmds.getAttr(config + ".renderImagePath") or
             not os.path.isfile(path) or os.path.getsize(path) <= 0):

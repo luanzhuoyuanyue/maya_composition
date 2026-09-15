@@ -361,6 +361,12 @@ class PngWriteValidationTests(unittest.TestCase):
     def test_write_png_accepts_true_save_with_valid_reloaded_file(self):
         self._write(save_result=True)
 
+    def test_maya_image_path_uses_forward_slashes(self):
+        self.assertEqual(
+            "C:/project/sourceimages/composition_guides/guide.png",
+            self.controller._maya_image_path(
+                r"C:\project/sourceimages\composition_guides/guide.png"))
+
     def test_write_png_accepts_false_save_with_valid_reloaded_file(self):
         self._write(save_result=False)
 
