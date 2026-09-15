@@ -113,7 +113,9 @@ class GuiCallbackTests(unittest.TestCase):
 
     def _scene_settings(self, settings):
         for key, value in settings.items():
-            self.cmds.values["config." + key] = [tuple(value)] if key == "lineColor" else value
+            attribute = "centerEnabled" if key == "center" else key
+            self.cmds.values["config." + attribute] = [tuple(value)] if key == "lineColor" else value
+        self.cmds.values["config.center"] = [(0.0, 0.0, 0.0)]
 
     def _bind_existing(self, settings=None):
         self.config = "config"
@@ -144,7 +146,7 @@ class GuiCallbackTests(unittest.TestCase):
             self.cmds.change(self.window, key, True)
         self.assertTrue(self.cmds.controls[self.window.controls["all"]]["value1"])
         self.assertEqual(["config.goldenSpiral", "config.goldenTriangle",
-                          "config.diagonal", "config.center"], [c[0] for c in self.cmds.calls])
+                          "config.diagonal", "config.centerEnabled"], [c[0] for c in self.cmds.calls])
         self.cmds.change(self.window, "thirds", False)
         self.assertFalse(self.cmds.controls[self.window.controls["all"]]["value1"])
 
@@ -169,6 +171,18 @@ class GuiCallbackTests(unittest.TestCase):
         self.assertEqual([], self.created)
         self.assertEqual([], self.overlays)
 
+    def test_loading_center_master_uses_boolean_setting_not_locator_center(self):
+        self._bind_existing(dict(DEFAULTS, center=False))
+        self.assertFalse(self.window._settings()["center"])
+        self._bind_existing(dict(DEFAULTS, center=True))
+        self.assertTrue(self.window._settings()["center"])
+
+    def test_live_center_change_preserves_inherited_locator_center(self):
+        self._bind_existing()
+        self.cmds.change(self.window, "center", True)
+        self.assertEqual([("config.centerEnabled", (True,), {})], self.cmds.calls)
+        self.assertEqual([(0.0, 0.0, 0.0)], self.cmds.values["config.center"])
+
     def test_color_and_enum_changes_map_to_node_values(self):
         self._bind_existing()
         self.cmds.change(self.window, "color", (0.1, 0.6, 0.9))
@@ -186,7 +200,7 @@ class GuiCallbackTests(unittest.TestCase):
         self._bind_existing()
         self.cmds.change(self.window, "all", False)
         self.assertEqual(set(("config.thirds", "config.goldenSpiral", "config.goldenTriangle",
-                              "config.diagonal", "config.center")), set(c[0] for c in self.cmds.calls))
+                              "config.diagonal", "config.centerEnabled")), set(c[0] for c in self.cmds.calls))
         self.assertTrue(all(call[1] == (False,) for call in self.cmds.calls))
         self.assertEqual(1, self.cmds.refreshes)
 
@@ -272,6 +286,49 @@ class GuiCallbackTests(unittest.TestCase):
         self.assertIn(reopened.window, self.cmds.windows)
         self.assertEqual(1, len(self.cmds.windows))
         self.assertEqual(2, len(self.controller._callback_ids))
+
+
+class CenterStorageTests(unittest.TestCase):
+
+    def test_create_and_update_write_public_center_to_center_enabled(self):
+        for existing in (None, "config"):
+            cmds = _NativeUI()
+            controller = _load_controller(cmds)
+            controller._camera_shape = lambda camera: camera
+            controller.find_config = lambda camera: existing
+            controller._long = lambda node: node
+            controller._ordinary_state = lambda config: None
+            cmds.allNodeTypes = lambda: ["compositionGuidesLocator"]
+            cmds.undoInfo = lambda **kwargs: None
+            cmds.createNode = lambda kind, **kwargs: "config"
+            cmds.connectAttr = lambda source, destination: None
+            cmds.listRelatives = lambda node, **kwargs: ["transform"]
+            cmds.attributeQuery = lambda attribute, **kwargs: False
+            cmds.values["config.outputMode"] = 0
+
+            self.assertEqual("config", controller.create_or_update(
+                CAMERA, {"center": True, "thirds": False}))
+
+            self.assertIn(("config.centerEnabled", (True,), {}), cmds.calls)
+            self.assertIn(("config.thirds", (False,), {}), cmds.calls)
+            self.assertNotIn("config.center", [call[0] for call in cmds.calls])
+
+    def test_render_settings_read_center_enabled_under_public_center_key(self):
+        cmds = _NativeUI()
+        controller = _load_controller(cmds)
+        controller._uuid = lambda camera: "camera-uuid"
+        for key, value in DEFAULTS.items():
+            attribute = "centerEnabled" if key == "center" else key
+            cmds.values["config." + attribute] = [value] if key == "lineColor" else value
+        cmds.values.update({"config.center": [(0.0, 0.0, 0.0)],
+                            "defaultResolution.width": 640,
+                            "defaultResolution.height": 360,
+                            "defaultResolution.pixelAspect": 1.0})
+        for enabled in (False, True):
+            cmds.values["config.centerEnabled"] = enabled
+            settings = controller._render_settings("config", CAMERA)
+            self.assertIs(enabled, settings["center"])
+            self.assertNotIn("centerEnabled", settings)
 
 
 if __name__ == "__main__":

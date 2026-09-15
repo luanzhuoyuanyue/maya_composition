@@ -50,7 +50,7 @@ ATTRIBUTE_NAMES = (
     "diagonal",
     "diagonalDown",
     "diagonalUp",
-    "center",
+    "centerEnabled",
     "centerCross",
     "centerCircle",
     "centerBox",
@@ -221,6 +221,22 @@ class SourceCompatibilityTests(unittest.TestCase):
         source = _read_source("composition_guides_plugin.py")
         for attribute_name in ATTRIBUTE_NAMES:
             self.assertIn(attribute_name, source)
+
+    def test_plugin_center_master_does_not_collide_with_inherited_center(self):
+        module = ast.parse(_read_source("composition_guides_plugin.py"))
+        declarations = [node.args[0].s for node in ast.walk(module)
+                        if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "create" and node.args
+                        and isinstance(node.args[0], ast.Str)]
+        self.assertIn("centerEnabled", declarations)
+        self.assertNotIn("center", declarations)
+        boolean_reads = [node.args[1].s for node in ast.walk(module)
+                         if isinstance(node, ast.Call)
+                         and isinstance(node.func, ast.Name)
+                         and node.func.id == "_read_bool"]
+        self.assertIn("centerEnabled", boolean_reads)
+        self.assertNotIn("center", boolean_reads)
 
     def test_render_in_progress_is_non_storable(self):
         source = _read_source("composition_guides_plugin.py")

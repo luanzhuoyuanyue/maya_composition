@@ -31,7 +31,7 @@ class CompositionGuidesLocator(omui.MPxLocatorNode):
     diagonal = om.MObject()
     diagonalDown = om.MObject()
     diagonalUp = om.MObject()
-    center = om.MObject()
+    centerEnabled = om.MObject()
     centerCross = om.MObject()
     centerCircle = om.MObject()
     centerBox = om.MObject()
@@ -127,10 +127,10 @@ class CompositionGuidesLocator(omui.MPxLocatorNode):
         CompositionGuidesLocator.addAttribute(
             CompositionGuidesLocator.diagonalUp)
 
-        CompositionGuidesLocator.center = numeric_attribute.create(
-            "center", "ce", om.MFnNumericData.kBoolean, False)
+        CompositionGuidesLocator.centerEnabled = numeric_attribute.create(
+            "centerEnabled", "cen", om.MFnNumericData.kBoolean, False)
         numeric_attribute.keyable = True
-        CompositionGuidesLocator.addAttribute(CompositionGuidesLocator.center)
+        CompositionGuidesLocator.addAttribute(CompositionGuidesLocator.centerEnabled)
 
         CompositionGuidesLocator.centerCross = numeric_attribute.create(
             "centerCross", "cc", om.MFnNumericData.kBoolean, True)
@@ -351,7 +351,7 @@ class CompositionGuidesDrawOverride(omr.MPxDrawOverride):
         diagonal = _read_bool(node_function, "diagonal")
         diagonal_down = _read_bool(node_function, "diagonalDown")
         diagonal_up = _read_bool(node_function, "diagonalUp")
-        center = _read_bool(node_function, "center")
+        center = _read_bool(node_function, "centerEnabled")
         center_cross = _read_bool(node_function, "centerCross")
         center_circle = _read_bool(node_function, "centerCircle")
         center_box = _read_bool(node_function, "centerBox")

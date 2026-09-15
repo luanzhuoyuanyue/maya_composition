@@ -60,6 +60,10 @@ class GuideError(RuntimeError):
     pass
 
 
+def _setting_attribute(name):
+    return "centerEnabled" if name == "center" else name
+
+
 def _long(node):
     matches = cmds.ls(node, long=True) or []
     if len(matches) != 1:
@@ -219,7 +223,7 @@ def create_or_update(camera_shape, settings):
             if key == "lineColor":
                 cmds.setAttr(config + ".lineColor", *value, type="double3")
             else:
-                cmds.setAttr(config + "." + key, value)
+                cmds.setAttr(config + "." + _setting_attribute(key), value)
         if cmds.getAttr(config + ".outputMode") in (1, 2):
             refresh_render_overlay(camera_shape)
             install_render_hooks()
@@ -347,7 +351,8 @@ def remove(camera_shape):
 
 
 def _render_settings(config, camera):
-    settings = dict((name, cmds.getAttr(config + "." + name)) for name in SETTING_NAMES)
+    settings = dict((name, cmds.getAttr(config + "." + _setting_attribute(name)))
+                    for name in SETTING_NAMES)
     settings["lineColor"] = list(settings["lineColor"][0])
     settings.update({
         "width": cmds.getAttr("defaultResolution.width"),
@@ -670,7 +675,8 @@ class CompositionGuidesWindow(object):
         if config is None:
             return
         for key in keys:
-            plug, value = config + "." + self._attributes[key], self._value(key)
+            plug = config + "." + _setting_attribute(self._attributes[key])
+            value = self._value(key)
             if key == "color":
                 cmds.setAttr(plug, *value, type="double3")
             else:
@@ -684,7 +690,7 @@ class CompositionGuidesWindow(object):
         self._loading = True
         try:
             for key, attribute, label, default in self.CHECKS:
-                value = cmds.getAttr(config + "." + attribute) if config else default
+                value = cmds.getAttr(config + "." + _setting_attribute(attribute)) if config else default
                 cmds.checkBoxGrp(self.controls[key], edit=True, value1=value)
             for key, attribute, label, choices, default in self.MENUS:
                 value = cmds.getAttr(config + "." + attribute) if config else default
