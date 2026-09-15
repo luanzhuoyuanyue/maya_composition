@@ -199,7 +199,7 @@ def _ensure_plane(config):
         plane = _long(plane)
         _mark(plane, config)
     cmds.setAttr(plane + ".visibility", False)
-    cmds.setAttr(plane + ".displayMode", 4)
+    cmds.setAttr(plane + ".displayMode", 3)
     cmds.setAttr(plane + ".fit", 4)
     if cmds.attributeQuery("fitToResolutionGate", node=plane, exists=True):
         cmds.setAttr(plane + ".fitToResolutionGate", True)

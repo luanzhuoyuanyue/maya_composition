@@ -140,6 +140,24 @@ class ControllerRecoveryTests(unittest.TestCase):
         self.assertFalse(any(call[0] == "multiplier.input2"
                              for call in fake_cmds.calls))
 
+    def test_owned_image_plane_uses_rgba_display_mode(self):
+        fake_cmds = _FakeCmds()
+        fake_cmds.attributeQuery = lambda *unused, **unused_keywords: False
+        controller = _load_controller(fake_cmds)
+        controller._config_camera = lambda config: "camera" if config == "config" else None
+        controller._dependency = lambda config, kind: {
+            "imagePlane": "ownedPlane", "multDoubleLinear": "multiplier",
+        }[kind]
+        controller._connect = lambda source, destination: None
+        controller._set_multiplier_factor = lambda multiplier: None
+
+        self.assertEqual("ownedPlane", controller._ensure_plane("config"))
+
+        display_modes = [value for plug, value in fake_cmds.calls
+                         if plug == "ownedPlane.displayMode"]
+        self.assertEqual([3], display_modes)
+        self.assertNotIn(4, display_modes)
+
     def test_after_render_continues_after_a_plane_hide_failure(self):
         fake_cmds = _FakeCmds()
         fake_cmds.failure_for = lambda plug, value, calls: (
