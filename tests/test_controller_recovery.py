@@ -369,10 +369,51 @@ class PngWriteValidationTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == "nt", "Windows path fallback")
     def test_cache_directory_skips_image_path_at_windows_limit(self):
-        long_root = "C:/" + ("x" * 256)
+        long_root = "C:/" + "/".join(["x" * 83] * 3)
+        roots_used = []
+        original_isdir = self.controller.os.path.isdir
+        original_mkstemp = self.controller.tempfile.mkstemp
+        original_close = self.controller.os.close
+        original_remove = self.controller.os.remove
         self.controller._cache_roots = lambda: [long_root, self.directory]
-        self.assertEqual(
-            self.directory, self.controller._cache_directory("guide.png"))
+        self.controller.os.path.isdir = lambda path: True
+        self.controller.tempfile.mkstemp = lambda prefix, dir: (
+            roots_used.append(dir) or (1, os.path.join(dir, prefix + "probe")))
+        self.controller.os.close = lambda descriptor: None
+        self.controller.os.remove = lambda path: None
+        try:
+            self.assertEqual(
+                self.directory, self.controller._cache_directory("guide.png"))
+            self.assertEqual([self.directory], roots_used)
+        finally:
+            self.controller.os.path.isdir = original_isdir
+            self.controller.tempfile.mkstemp = original_mkstemp
+            self.controller.os.close = original_close
+            self.controller.os.remove = original_remove
+
+    @unittest.skipUnless(os.name == "nt", "Windows path fallback")
+    def test_cache_directory_keeps_project_root_below_windows_limit(self):
+        project_root = "C:/project/sourceimages/composition_guides"
+        roots_used = []
+        original_isdir = self.controller.os.path.isdir
+        original_mkstemp = self.controller.tempfile.mkstemp
+        original_close = self.controller.os.close
+        original_remove = self.controller.os.remove
+        self.controller._cache_roots = lambda: [project_root, self.directory]
+        self.controller.os.path.isdir = lambda path: True
+        self.controller.tempfile.mkstemp = lambda prefix, dir: (
+            roots_used.append(dir) or (1, os.path.join(dir, prefix + "probe")))
+        self.controller.os.close = lambda descriptor: None
+        self.controller.os.remove = lambda path: None
+        try:
+            self.assertEqual(
+                project_root, self.controller._cache_directory("guide.png"))
+            self.assertEqual([project_root], roots_used)
+        finally:
+            self.controller.os.path.isdir = original_isdir
+            self.controller.tempfile.mkstemp = original_mkstemp
+            self.controller.os.close = original_close
+            self.controller.os.remove = original_remove
 
     def test_write_png_accepts_false_save_with_valid_reloaded_file(self):
         self._write(save_result=False)
