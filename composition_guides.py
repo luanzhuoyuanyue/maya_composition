@@ -285,9 +285,12 @@ def _cache_roots():
     return roots
 
 
-def _cache_directory():
+def _cache_directory(filename=None):
     for root in _cache_roots():
         try:
+            if (filename and os.name == "nt" and
+                    len(os.path.abspath(os.path.join(root, filename))) >= 260):
+                continue
             if not os.path.isdir(root):
                 os.makedirs(root)
             descriptor, probe = tempfile.mkstemp(prefix=".write-check-", dir=root)
@@ -448,8 +451,9 @@ def refresh_render_overlay(camera_shape, force=False):
         raise GuideError(u"该相机尚未创建构图辅助线。")
     settings = _render_settings(config, camera_shape)
     signature = core.render_signature(settings)
+    filename = _cache_filename(config, camera_shape)
     path = _maya_image_path(os.path.join(
-        _cache_directory(), _cache_filename(config, camera_shape)))
+        _cache_directory(filename), filename))
     if (force or signature != cmds.getAttr(config + ".renderSignature") or
             path != cmds.getAttr(config + ".renderImagePath") or
             not os.path.isfile(path) or os.path.getsize(path) <= 0):

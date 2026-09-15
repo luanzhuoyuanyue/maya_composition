@@ -367,6 +367,13 @@ class PngWriteValidationTests(unittest.TestCase):
             self.controller._maya_image_path(
                 r"C:\project/sourceimages\composition_guides/guide.png"))
 
+    @unittest.skipUnless(os.name == "nt", "Windows path fallback")
+    def test_cache_directory_skips_image_path_at_windows_limit(self):
+        long_root = "C:/" + ("x" * 256)
+        self.controller._cache_roots = lambda: [long_root, self.directory]
+        self.assertEqual(
+            self.directory, self.controller._cache_directory("guide.png"))
+
     def test_write_png_accepts_false_save_with_valid_reloaded_file(self):
         self._write(save_result=False)
 
