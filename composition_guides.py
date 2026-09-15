@@ -115,10 +115,27 @@ def _config_camera(config):
     return None
 
 
+def _connected_nodes(source_plug, kind, destination_attribute):
+    plugs = cmds.listConnections(source_plug, source=False,
+                                destination=True, plugs=True) or []
+    nodes = []
+    for plug in plugs:
+        try:
+            node, attribute = plug.split(".", 1)
+            if attribute != destination_attribute:
+                continue
+            node = _long(node)
+            if cmds.nodeType(node) == kind:
+                nodes.append(node)
+        except (RuntimeError, ValueError):
+            continue
+    return nodes
+
+
 def find_config(camera_shape):
     camera_shape = _camera_shape(camera_shape)
-    candidates = cmds.listConnections(camera_shape + ".message", source=False,
-                                     destination=True, type=NODE_TYPE) or []
+    candidates = _connected_nodes(camera_shape + ".message", NODE_TYPE,
+                                  "cameraMessage")
     valid = sorted(set(_long(node) for node in candidates
                        if _config_camera(node) == camera_shape))
     if len(valid) > 1:
@@ -144,8 +161,7 @@ def _owned(node, config, kind):
 
 
 def _dependency(config, kind):
-    nodes = cmds.listConnections(config + ".message", source=False,
-                                destination=True, type=kind) or []
+    nodes = _connected_nodes(config + ".message", kind, "cgConfigMessage")
     valid = sorted(set(_long(node) for node in nodes if _owned(node, config, kind)))
     if len(valid) > 1:
         raise GuideError(u"构图配置存在重复的渲染依赖，请先处理重复节点。")
