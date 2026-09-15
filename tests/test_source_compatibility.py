@@ -14,6 +14,8 @@ SOURCE_FILES = (
     "composition_guides.py",
     "composition_guides_core.py",
     "composition_guides_plugin.py",
+    "install_composition_guides.py",
+    "maya_smoke_test.py",
 )
 
 FORBIDDEN_PATTERNS = [
@@ -80,6 +82,42 @@ def _read_source(filename):
 
 
 class SourceCompatibilityTests(unittest.TestCase):
+
+    def test_final_package_has_exact_required_deliverables(self):
+        for filename in SOURCE_FILES + ("README_CN.md",):
+            self.assertTrue(os.path.isfile(os.path.join(PROJECT_ROOT, filename)),
+                            "missing " + filename)
+
+    def test_installer_exposes_safe_installation_contract(self):
+        self.assertTrue(os.path.isfile(os.path.join(PROJECT_ROOT, "install_composition_guides.py")),
+                        "missing install_composition_guides.py")
+        source = _read_source("install_composition_guides.py")
+        names = [node.name for node in ast.parse(source).body if isinstance(node, ast.FunctionDef)]
+        self.assertIn("install", names)
+        self.assertIn("uninstall", names)
+        for token in ("cmds.internalVar(userScriptDir=True)", "cmds.internalVar(userAppDir=True)",
+                      "cmds.loadPlugin", "cmds.pluginInfo", "cmds.shelfButton",
+                      "Maya Composition Guides", "import composition_guides; composition_guides.show()"):
+            self.assertIn(token, source)
+        self.assertNotRegex(source, r"(?:glob\s*\(|rmtree\([^\n]*[\"'][*?])")
+
+    def test_smoke_test_is_explicit_and_has_named_lifecycle_checks(self):
+        self.assertTrue(os.path.isfile(os.path.join(PROJECT_ROOT, "maya_smoke_test.py")),
+                        "missing maya_smoke_test.py")
+        source = _read_source("maya_smoke_test.py")
+        self.assertIn("def run_smoke_test(allow_new_scene=False):", source)
+        for name in ("camera_types", "idempotent_configs", "ownership_connections", "near_clip_depth",
+                     "png_rgba_640x360", "output_mode_states", "scoped_removal"):
+            self.assertIn(name, source)
+
+    def test_readme_documents_installation_modes_and_limits(self):
+        self.assertTrue(os.path.isfile(os.path.join(PROJECT_ROOT, "README_CN.md")),
+                        "missing README_CN.md")
+        source = _read_source("README_CN.md")
+        for token in (u"Maya 2018–2026", "Maya Hardware 2.0", "Shelf", "Script Editor",
+                      u"仅视口", u"仅硬件渲染", u"两者", u"中心 25%", u"中心菱形",
+                      u"缓存", u"卸载", "run_smoke_test(allow_new_scene=True)"):
+            self.assertIn(token, source)
 
     def test_gui_exposes_native_controls_and_stable_keys(self):
         source = _read_source("composition_guides.py")
@@ -154,6 +192,8 @@ class SourceCompatibilityTests(unittest.TestCase):
 
     def test_sources_parse_and_avoid_unsupported_python_syntax(self):
         for filename in SOURCE_FILES:
+            self.assertTrue(os.path.isfile(os.path.join(PROJECT_ROOT, filename)),
+                            "missing " + filename)
             source = _read_source(filename)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", DeprecationWarning)
