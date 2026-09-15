@@ -163,6 +163,12 @@ def _connect(source, destination):
     cmds.connectAttr(source, destination)
 
 
+def _set_multiplier_factor(multiplier):
+    selection = om.MSelectionList()
+    selection.add(multiplier + ".input2")
+    selection.getPlug(0).setDouble(1.01)
+
+
 def _ensure_plane(config):
     camera = _config_camera(config)
     if camera is None:
@@ -183,7 +189,7 @@ def _ensure_plane(config):
         multiplier = cmds.createNode("multDoubleLinear", name="compositionGuidesDepth#")
         _mark(multiplier, config)
     _connect(camera + ".nearClipPlane", multiplier + ".input1")
-    cmds.setAttr(multiplier + ".input2", 1.01)
+    _set_multiplier_factor(multiplier)
     _connect(multiplier + ".output", plane + ".depth")
     return plane
 
@@ -226,10 +232,17 @@ def create_or_update(camera_shape, settings):
 def _ordinary_state(config):
     if not _config_camera(config):
         return
-    plane = _dependency(config, "imagePlane")
-    if plane:
-        cmds.setAttr(plane + ".visibility", False)
-    cmds.setAttr(config + ".renderInProgress", False)
+    try:
+        plane = _dependency(config, "imagePlane")
+        if plane:
+            cmds.setAttr(plane + ".visibility", False)
+    finally:
+        cmds.setAttr(config + ".renderInProgress", False)
+
+
+def _warn_config_failures(action, failures):
+    for config, error in failures:
+        cmds.warning(u"构图%s失败（%s）：%s" % (action, config, error))
 
 
 def set_visible(camera_shape, visible):
@@ -439,8 +452,9 @@ def remove_render_hooks():
 def _before_render():
     if cmds.getAttr("defaultRenderGlobals.currentRenderer") != RENDERER:
         return
-    try:
-        for config in _configs():
+    failures = []
+    for config in _configs():
+        try:
             _ordinary_state(config)
             if (cmds.getAttr(config + ".enabled") and
                     cmds.getAttr(config + ".outputMode") in (1, 2)):
@@ -448,14 +462,19 @@ def _before_render():
                 plane = _dependency(config, "imagePlane")
                 cmds.setAttr(config + ".renderInProgress", True)
                 cmds.setAttr(plane + ".visibility", True)
-    except Exception:
-        _after_render()
-        raise
+        except Exception as error:
+            failures.append((config, error))
+    _warn_config_failures(u"渲染准备", failures)
 
 
 def _after_render():
+    failures = []
     for config in _configs():
-        _ordinary_state(config)
+        try:
+            _ordinary_state(config)
+        except Exception as error:
+            failures.append((config, error))
+    _warn_config_failures(u"渲染状态恢复", failures)
 
 
 def _before_save(*unused):

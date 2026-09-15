@@ -123,6 +123,14 @@ class SourceCompatibilityTests(unittest.TestCase):
                 self.assertIsInstance(node.args[0], ast.Name)
         self.assertNotRegex(source, r"cmds\.delete\(\s*cmds\.ls")
 
+    def test_controller_sets_depth_factor_with_internal_mplug_value(self):
+        source = _read_source("composition_guides.py")
+        self.assertNotIn(
+            'cmds.setAttr(multiplier + ".input2", 1.01)', source)
+        self.assertRegex(
+            source,
+            r"MSelectionList[\s\S]{0,500}?\.input2[\s\S]{0,300}?getPlug\(0\)[\s\S]{0,300}?setDouble\(1\.01\)")
+
     def test_sources_parse_and_avoid_unsupported_python_syntax(self):
         for filename in SOURCE_FILES:
             source = _read_source(filename)
