@@ -6,24 +6,95 @@ import os
 import sys
 
 
+def _normalized(path):
+    return os.path.normcase(os.path.realpath(os.path.abspath(path)))
+
+
+def _identity_error(detail):
+    return RuntimeError(u"测试副本不一致：%s。请重启干净 Maya 会话后运行测试。" % detail)
+
+
+def _registered_plugin(cmds):
+    matches = []
+    for name in cmds.pluginInfo(query=True, listPlugins=True) or []:
+        path = cmds.pluginInfo(name, query=True, path=True)
+        if (os.path.normcase(os.path.basename(path)) == os.path.normcase("composition_guides_plugin.py") or
+                "compositionGuidesLocator" in (cmds.pluginInfo(name, query=True, dependNode=True) or [])):
+            matches.append((name, path))
+    if len(matches) > 1:
+        raise _identity_error(u"存在多个构图插件")
+    if not matches and "compositionGuidesLocator" in (cmds.allNodeTypes() or []):
+        raise _identity_error(u"构图节点类型的插件来源不明")
+    return matches[0] if matches else None
+
+
+def _validate_module(name, module, expected):
+    actual = getattr(module, "__file__", None)
+    if not actual or _normalized(actual) != _normalized(expected):
+        raise _identity_error(u"%s 不在预期文件 %s" % (name, expected))
+
+
+def _test_modules(cmds):
+    names = ("composition_guides", "composition_guides_core", "composition_guides_plugin")
+    directory = os.path.dirname(os.path.abspath(__file__))
+    local = dict((name, os.path.join(directory, name + ".py")) for name in names)
+    scripts = os.path.abspath(cmds.internalVar(userScriptDir=True))
+    installed = dict((name, os.path.join(scripts, name + ".py")) for name in names)
+    installed["composition_guides_plugin"] = os.path.join(
+        os.path.abspath(cmds.internalVar(userAppDir=True)), "plug-ins", "composition_guides_plugin.py")
+    loaded = _registered_plugin(cmds)
+    if loaded:
+        path = _normalized(loaded[1])
+        if path == _normalized(installed["composition_guides_plugin"]):
+            expected = installed
+        elif path == _normalized(local["composition_guides_plugin"]):
+            expected = local
+        else:
+            raise _identity_error(u"已加载其他目录的构图插件 %s" % loaded[1])
+    else:
+        expected = local if all(os.path.isfile(path) for path in local.values()) else installed
+    for name, path in expected.items():
+        if not os.path.isfile(path):
+            raise _identity_error(u"所选测试副本缺少 %s" % path)
+        if name in sys.modules:
+            _validate_module(name, sys.modules[name], path)
+    directories = [os.path.dirname(expected["composition_guides"])]
+    plugin_directory = os.path.dirname(expected["composition_guides_plugin"])
+    if plugin_directory not in directories:
+        directories.append(plugin_directory)
+    for path in reversed(directories):
+        while path in sys.path:
+            sys.path.remove(path)
+        sys.path.insert(0, path)
+    if loaded is None:
+        cmds.loadPlugin(expected["composition_guides_plugin"], quiet=True)
+    verified_plugin = _registered_plugin(cmds)
+    if (verified_plugin is None or
+            _normalized(verified_plugin[1]) != _normalized(expected["composition_guides_plugin"])):
+        raise _identity_error(u"加载后的插件路径与所选测试副本不一致")
+    # The plugin loader may import modules; check those before the controller's
+    # import-time recovery can modify scene state.
+    for name, path in expected.items():
+        if name in sys.modules:
+            _validate_module(name, sys.modules[name], path)
+    modules = {}
+    for name in ("composition_guides_core", "composition_guides_plugin", "composition_guides"):
+        module = __import__(name)
+        _validate_module(name, module, expected[name])
+        modules[name] = module
+    return modules["composition_guides"], modules["composition_guides_plugin"], expected
+
+
 def run_smoke_test(allow_new_scene=False):
     if allow_new_scene is not True:
         raise RuntimeError(u"测试会强制新建场景；请保存工作并在可丢弃的 Maya 会话中显式传入 allow_new_scene=True。")
     import maya.cmds as cmds
+    guides, plugin, expected_paths = _test_modules(cmds)
     import maya.api.OpenMaya as om
     try:
         from PySide6.QtGui import QImage
     except ImportError:
         from PySide2.QtGui import QImage
-    directory = os.path.dirname(os.path.abspath(__file__))
-    if directory not in sys.path:
-        sys.path.append(directory)
-    import composition_guides as guides
-    if "compositionGuidesLocator" not in (cmds.allNodeTypes() or []):
-        local = os.path.join(directory, "composition_guides_plugin.py")
-        installed = os.path.join(cmds.internalVar(userAppDir=True), "plug-ins", "composition_guides_plugin.py")
-        cmds.loadPlugin(local if os.path.isfile(local) else installed, quiet=True)
-    import composition_guides_plugin as plugin
 
     def check(name, condition):
         if not condition:
@@ -45,7 +116,7 @@ def run_smoke_test(allow_new_scene=False):
         override = plugin.CompositionGuidesDrawOverride(path.node())
         return override.prepareForDraw(path, dag_path(camera), FrameContext(), None).should_draw
 
-    results = {}
+    results = {"tested_paths": expected_paths}
     previous_renderer = cmds.getAttr("defaultRenderGlobals.currentRenderer")
     try:
         cmds.file(new=True, force=True)

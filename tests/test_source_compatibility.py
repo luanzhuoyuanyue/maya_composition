@@ -119,6 +119,14 @@ class SourceCompatibilityTests(unittest.TestCase):
                       u"缓存", u"卸载", "run_smoke_test(allow_new_scene=True)"):
             self.assertIn(token, source)
 
+    def test_readme_install_command_uses_cross_version_eval_and_explicit_file_scope(self):
+        source = _read_source("README_CN.md")
+        snippet = source.split("```python", 1)[1].split("```", 1)[0]
+        self.assertIn('"__file__": installer_path', snippet)
+        self.assertIn('"__name__": "__main__"', snippet)
+        self.assertIn('eval(compile(open(installer_path, "rb").read(), installer_path, "exec"), installer_scope)', snippet)
+        self.assertNotRegex(snippet, r"\bexec\s*\(")
+
     def test_gui_exposes_native_controls_and_stable_keys(self):
         source = _read_source("composition_guides.py")
         module = ast.parse(source)

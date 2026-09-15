@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
 
+import io
 import os
 import shutil
 import sys
 import tempfile
 import types
 import unittest
+import warnings
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -17,9 +19,15 @@ class MayaBoundary(object):
     def __init__(self, root):
         self.root = root
         self.loaded = False
+        self.plugin_path = os.path.join(root, "app", "plug-ins", "composition_guides_plugin.py")
+        self.plugin_name = "composition_guides_plugin"
+        self.plugin_edits = []
         self.loads = []
         self.autoload = False
         self.live = []
+        self.orphan_type = False
+        self.new_scenes = []
+        self.scene_writes = []
         self.controls = {"Shelf|Composition|user": {"annotation": "User camera"}}
         self.tabs = {"Shelf|Composition"}
 
@@ -32,26 +40,41 @@ class MayaBoundary(object):
         return os.path.join(self.root, "project")
 
     def allNodeTypes(self):
-        return ["compositionGuidesLocator"] if self.loaded else []
+        return ["compositionGuidesLocator"] if self.loaded or self.orphan_type else []
+
+    def getAttr(self, plug):
+        assert plug == "defaultRenderGlobals.currentRenderer"
+        return "previousRenderer"
+
+    def setAttr(self, *args, **kwargs):
+        self.scene_writes.append((args, kwargs))
+
+    def file(self, **kwargs):
+        self.new_scenes.append(kwargs)
+        raise NewSceneBoundaryReached()
 
     def ls(self, **kwargs):
         return self.live
 
     def pluginInfo(self, plugin=None, **kwargs):
         if kwargs.get("listPlugins"):
-            return ["composition_guides_plugin"] if self.loaded else []
+            return [self.plugin_name] if self.loaded else []
         if kwargs.get("loaded"):
             return self.loaded
         if kwargs.get("path"):
-            return os.path.join(self.root, "app", "plug-ins", "composition_guides_plugin.py")
+            return self.plugin_path
+        if kwargs.get("dependNode"):
+            return ["compositionGuidesLocator"]
         if kwargs.get("edit"):
+            self.plugin_edits.append((plugin, kwargs))
             self.autoload = kwargs["autoload"]
 
     def loadPlugin(self, path, **kwargs):
         assert kwargs == {"quiet": True}
         self.loads.append(path)
         self.loaded = True
-        return ["composition_guides_plugin"]
+        self.plugin_path = path
+        return [self.plugin_name]
 
     def unloadPlugin(self, name, **kwargs):
         assert not kwargs.get("force")
@@ -135,6 +158,52 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual([], self.cmds.loads)
         self.assertEqual(1, len(self.cmds.controls))
 
+    def test_source_plugin_is_rejected_before_copy_load_autoload_or_shelf_mutation(self):
+        self.cmds.loaded = True
+        self.cmds.plugin_path = os.path.join(ROOT, "composition_guides_plugin.py")
+        with self.assertRaises(RuntimeError):
+            self.module.install()
+        self.assertEqual([], os.listdir(self.root))
+        self.assertEqual([], self.cmds.loads)
+        self.assertEqual([], self.cmds.plugin_edits)
+        self.assertEqual({"Shelf|Composition|user": {"annotation": "User camera"}}, self.cmds.controls)
+
+    def test_renamed_plugin_owning_same_node_type_is_rejected_before_mutation(self):
+        self.cmds.loaded = True
+        self.cmds.plugin_name = "old_guides"
+        self.cmds.plugin_path = os.path.join(self.root, "old_guides.py")
+        with self.assertRaises(RuntimeError):
+            self.module.install()
+        self.assertEqual([], os.listdir(self.root))
+        self.assertEqual([], self.cmds.loads)
+        self.assertEqual([], self.cmds.plugin_edits)
+        self.assertEqual(1, len(self.cmds.controls))
+
+    def test_target_plugin_already_loaded_is_reused_without_second_load(self):
+        self.cmds.loaded = True
+        first = self.module.install()
+        second = self.module.install()
+        self.assertEqual(first, second)
+        self.assertEqual([], self.cmds.loads)
+        self.assertEqual(self.cmds.plugin_path, first["paths"]["composition_guides_plugin.py"])
+        self.assertTrue(self.cmds.autoload)
+        self.assertEqual(2, len(self.cmds.controls))
+
+    def test_readme_install_command_runs_main_with_its_explicit_file_scope(self):
+        with io.open(os.path.join(ROOT, "README_CN.md"), encoding="utf-8") as handle:
+            snippet = handle.read().split("```python", 1)[1].split("```", 1)[0]
+        snippet = snippet.replace('r"X:/path/install_composition_guides.py"', repr(self.module.__file__))
+        scope = {}
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", ResourceWarning)
+            with mock.patch("builtins.print"):
+                eval(compile(snippet, "README install example", "exec"), scope)
+        self.assertEqual(self.module.__file__, scope["installer_scope"]["__file__"])
+        self.assertEqual("__main__", scope["installer_scope"]["__name__"])
+        self.assertTrue(os.path.isfile(os.path.join(self.root, "scripts", "composition_guides.py")))
+        self.assertEqual(1, len(self.cmds.loads))
+        self.assertEqual(2, len(self.cmds.controls))
+
     def test_live_nodes_block_uninstall_before_hooks_files_or_shelf_are_changed(self):
         self.module.install()
         self.cmds.live = ["liveGuide"]
@@ -209,6 +278,130 @@ class InstallerTests(unittest.TestCase):
         for value in (False, None, 1, "yes"):
             with self.assertRaises(RuntimeError):
                 module.run_smoke_test(allow_new_scene=value)
+
+
+class NewSceneBoundaryReached(Exception):
+    """Stop valid preflight exactly at the external new-scene boundary."""
+
+
+class SmokeIdentityTests(unittest.TestCase):
+    setUp = InstallerTests.setUp
+
+    def _smoke(self, installed=False):
+        self.controller._after_render = mock.Mock()
+        paths = self.module._paths() if installed else dict(
+            (name, os.path.join(ROOT, name)) for name in
+            ("composition_guides.py", "composition_guides_core.py", "composition_guides_plugin.py"))
+        if installed:
+            for name, path in paths.items():
+                if not os.path.isdir(os.path.dirname(path)):
+                    os.makedirs(os.path.dirname(path))
+                shutil.copy2(os.path.join(ROOT, name), path)
+        self.controller.__file__ = paths["composition_guides.py"]
+        self.core = types.ModuleType("composition_guides_core")
+        self.core.__file__ = paths["composition_guides_core.py"]
+        self.plugin = types.ModuleType("composition_guides_plugin")
+        self.plugin.__file__ = paths["composition_guides_plugin.py"]
+        api = types.ModuleType("maya.api")
+        api.OpenMaya = types.ModuleType("maya.api.OpenMaya")
+        qt = types.ModuleType("PySide6")
+        qt.QtGui = types.ModuleType("PySide6.QtGui")
+        qt.QtGui.QImage = object
+        modules = {"maya.api": api, "maya.api.OpenMaya": api.OpenMaya,
+                   "PySide6": qt, "PySide6.QtGui": qt.QtGui,
+                   "composition_guides_core": self.core,
+                   "composition_guides_plugin": self.plugin}
+        patch = mock.patch.dict(sys.modules, modules)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.smoke = types.ModuleType("smoke_under_test")
+        self.smoke.__file__ = os.path.join(ROOT, "maya_smoke_test.py")
+        with open(self.smoke.__file__, "rb") as handle:
+            eval(compile(handle.read(), self.smoke.__file__, "exec"), self.smoke.__dict__)
+        self.cmds.plugin_path = paths["composition_guides_plugin.py"]
+        return paths
+
+    def _assert_rejected_before_scene_mutation(self):
+        error = None
+        try:
+            self.smoke.run_smoke_test(allow_new_scene=True)
+        except Exception as caught:
+            error = caught
+        self.assertIsInstance(error, RuntimeError)
+        self.assertIn(u"干净", str(error))
+        self.assertEqual([], self.cmds.new_scenes)
+        self.assertEqual([], self.cmds.scene_writes)
+        self.controller._after_render.assert_not_called()
+
+    def test_old_controller_module_is_rejected_before_loading_or_new_scene(self):
+        self._smoke()
+        self.controller.__file__ = os.path.join(self.root, "old", "composition_guides.py")
+        self._assert_rejected_before_scene_mutation()
+        self.assertEqual([], self.cmds.loads)
+
+    def test_old_plugin_module_is_rejected_before_new_scene(self):
+        self._smoke()
+        self.cmds.loaded = True
+        self.plugin.__file__ = os.path.join(self.root, "old", "composition_guides_plugin.py")
+        self._assert_rejected_before_scene_mutation()
+
+    def test_unknown_loaded_plugin_path_is_rejected_before_new_scene(self):
+        self._smoke()
+        self.cmds.loaded = True
+        self.cmds.plugin_path = os.path.join(self.root, "old", "composition_guides_plugin.py")
+        self._assert_rejected_before_scene_mutation()
+
+    def test_unknown_registered_node_type_is_rejected_before_plugin_load_or_new_scene(self):
+        self._smoke()
+        self.cmds.orphan_type = True
+        self._assert_rejected_before_scene_mutation()
+        self.assertEqual([], self.cmds.loads)
+
+    def test_loaded_local_copy_reaches_new_scene_with_local_import_priority(self):
+        self._smoke()
+        self.cmds.loaded = True
+        with self.assertRaises(NewSceneBoundaryReached):
+            self.smoke.run_smoke_test(allow_new_scene=True)
+        self.assertEqual([{"new": True, "force": True}], self.cmds.new_scenes)
+        self.assertEqual(ROOT, sys.path[0])
+        self.assertEqual([], self.cmds.loads)
+
+    def test_loaded_installed_copy_reaches_new_scene_with_installed_import_priority(self):
+        paths = self._smoke(installed=True)
+        self.cmds.loaded = True
+        with self.assertRaises(NewSceneBoundaryReached):
+            self.smoke.run_smoke_test(allow_new_scene=True)
+        self.assertEqual([{"new": True, "force": True}], self.cmds.new_scenes)
+        self.assertEqual(os.path.dirname(paths["composition_guides.py"]), sys.path[0])
+        self.assertEqual([], self.cmds.loads)
+
+    def test_unloaded_complete_local_copy_loads_exact_plugin_before_new_scene(self):
+        paths = self._smoke()
+        with self.assertRaises(NewSceneBoundaryReached):
+            self.smoke.run_smoke_test(allow_new_scene=True)
+        self.assertEqual([paths["composition_guides_plugin.py"]], self.cmds.loads)
+        self.assertEqual([{"new": True, "force": True}], self.cmds.new_scenes)
+
+    def test_missing_local_package_falls_back_to_complete_installed_copy(self):
+        paths = self._smoke(installed=True)
+        self.smoke.__file__ = os.path.join(self.root, "smoke-only", "maya_smoke_test.py")
+        with self.assertRaises(NewSceneBoundaryReached):
+            self.smoke.run_smoke_test(allow_new_scene=True)
+        self.assertEqual([paths["composition_guides_plugin.py"]], self.cmds.loads)
+        self.assertEqual(os.path.dirname(paths["composition_guides.py"]), sys.path[0])
+
+    def test_imported_controller_is_rechecked_before_new_scene(self):
+        self._smoke()
+        self.cmds.loaded = True
+        self.controller.__file__ = os.path.join(self.root, "old", "composition_guides.py")
+        del sys.modules["composition_guides"]
+        original_import = __import__
+        def redirected_import(name, *args, **kwargs):
+            if name == "composition_guides":
+                return self.controller
+            return original_import(name, *args, **kwargs)
+        with mock.patch("builtins.__import__", side_effect=redirected_import):
+            self._assert_rejected_before_scene_mutation()
 
 
 if __name__ == "__main__":

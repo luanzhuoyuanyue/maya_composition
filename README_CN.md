@@ -9,10 +9,10 @@
 ```python
 installer_path = r"X:/path/install_composition_guides.py"
 installer_scope = {"__file__": installer_path, "__name__": "__main__"}
-exec(compile(open(installer_path, "rb").read(), installer_path, "exec"), installer_scope)
+eval(compile(open(installer_path, "rb").read(), installer_path, "exec"), installer_scope)
 ```
 
-安装器将主脚本与几何模块复制到 Maya 用户 scripts 目录，插件复制到用户应用目录下的 plug-ins，加载并设置自动加载。在 `Composition` Shelf 标签创建或更新 `CG` 按钮（有可用相机图标时显示图标）。可重复安装，已有插件和按钮会复用；更新代码后请重启 Maya 使用新代码。请保留解压目录供卸载和测试使用。
+此写法使用 Python 2／3 共用的 `eval` 执行已编译的脚本，并通过 `__main__` 调用安装。在 Maya 用户 scripts 目录复制主脚本与几何模块，在用户应用目录下的 plug-ins 复制插件，加载目标插件并设置自动加载。在 `Composition` Shelf 标签创建或更新 `CG` 按钮（有可用相机图标时显示图标）。可重复安装，已从目标安装位置加载的插件和按钮会复用；若已加载解压目录或其他位置的构图插件，安装器会在修改文件前拒绝，请重启干净 Maya 会话后重装。更新代码后请重启 Maya 使用新代码。请保留解压目录供卸载和测试使用。
 
 点击 Shelf 按钮，或在 Script Editor 运行：
 
@@ -67,13 +67,18 @@ print(install_composition_guides.uninstall())
 
 ## 冒烟测试与实际画面验证
 
-仅在已保存工作、可丢弃的空 Maya 会话中运行。此测试显式授权后会**强制新建场景**，测试场景会留在窗口中；默认调用会拒绝执行。将解压目录加入 `sys.path` 后运行：
+先保存工作并重新启动干净、可丢弃的 Maya 会话，避免内存中保留其他目录的旧模块。此测试显式授权后会**强制新建场景**，测试场景会留在窗口中；默认调用会拒绝执行。修改解压目录路径后运行：
 
 ```python
+import sys
+package_dir = r"X:/path"
+sys.path.insert(0, package_dir)
 import maya_smoke_test
 print(maya_smoke_test.run_smoke_test(allow_new_scene=True))
 ```
 
-结果字典逐项显示透视/正交相机、重复创建、独立配置与消息所有权、0.1→10.0 near clip 对应 10.1 深度、640×360 RGBA PNG、三个输出模式渲染前后状态、只删除目标相机等检查。脚本临时使用 Hardware 2.0 检查状态并在结束或失败时恢复此前的全局渲染器。它测试实际绘制数据准备，但不证明 GPU 已画出正确像素。
+所测副本按插件来源确定：若目标安装插件已经自动加载，则测试用户 scripts 加目标 plug-ins 的安装副本；若已加载本脚本同目录的插件，则测试同目录解压包；若尚未加载插件，则优先选择同目录完整包，缺失时才尝试完整安装副本。脚本在新建场景前核对控制器、几何模块和插件的实际文件路径；不一致或存在来源不明的节点类型时拒绝，提示重启干净会话。它会把选中目录置于导入搜索路径首位，并在加载后再次核对路径。
+
+结果字典的 `tested_paths` 明确列出所测三个文件，其他命名项目显示透视/正交相机、重复创建、独立配置与消息所有权、0.1→10.0 near clip 对应 10.1 深度、640×360 RGBA PNG、三个输出模式渲染前后状态、只删除目标相机等检查。脚本临时使用 Hardware 2.0 检查状态并在结束或失败时恢复此前的全局渲染器。它测试实际绘制数据准备，但不证明 GPU 已画出正确像素。
 
 最终视觉/GPU 验证取决于本地可用 Maya 版本，不能把源码、模拟测试或 mayapy 编译通过当成 Maya 2018–2026 全版本验证。请在可用版本中安装两次确认单一按钮，重启确认自动加载及启动，检查横/竖/方画幅、Pixel Aspect、Film Fit、Overscan、Film Offset、Pan/Zoom 和裁切面，实际执行 Hardware 2.0 Render View 与 `ogsRender` 检查线条位置、透明度和覆盖；也检查非 Hardware 渲染器未被切换。未实测版本需明确记录为未验证。

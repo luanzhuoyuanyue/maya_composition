@@ -49,15 +49,18 @@ def _redirected(path):
 
 
 def _loaded_plugin(paths):
-    allowed = (_normalized(paths[PLUGIN]),
-               _normalized(os.path.join(os.path.dirname(os.path.abspath(__file__)), PLUGIN)))
+    target = _normalized(paths[PLUGIN])
+    loaded = None
     for name in cmds.pluginInfo(query=True, listPlugins=True) or []:
         path = cmds.pluginInfo(name, query=True, path=True)
-        if _normalized(path) in allowed:
-            return name
-        if os.path.basename(path) == PLUGIN:
-            raise RuntimeError(u"另一个位置的构图插件已加载，请重新启动 Maya 后再安装或卸载。")
-    return None
+        if _normalized(path) == target:
+            loaded = name
+        elif (os.path.normcase(os.path.basename(path)) == os.path.normcase(PLUGIN) or
+              "compositionGuidesLocator" in (cmds.pluginInfo(name, query=True, dependNode=True) or [])):
+            raise RuntimeError(u"非目标安装路径的构图插件已加载，请重启干净 Maya 会话后重新安装或卸载。")
+    if loaded is None and "compositionGuidesLocator" in (cmds.allNodeTypes() or []):
+        raise RuntimeError(u"已有来源不明的构图节点类型，请重启干净 Maya 会话后重新安装或卸载。")
+    return loaded
 
 
 def _shelf(create=False):
