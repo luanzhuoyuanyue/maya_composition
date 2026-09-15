@@ -93,6 +93,25 @@ def _load_controller(fake_cmds):
     class QPainter(object):
         Antialiasing = 1
 
+    class QFileInfo(object):
+
+        def __init__(self, path):
+            self.path = path
+
+        def exists(self):
+            try:
+                os.stat(self.path)
+                return True
+            except OSError:
+                return False
+
+        def size(self):
+            try:
+                return os.stat(self.path).st_size
+            except OSError:
+                return 0
+
+    qt_core.QFileInfo = QFileInfo
     qt_core.QPointF = object
     qt_core.Qt = Qt
     qt_gui.QColor = object
@@ -344,6 +363,14 @@ class PngWriteValidationTests(unittest.TestCase):
 
     def test_write_png_accepts_false_save_with_valid_reloaded_file(self):
         self._write(save_result=False)
+
+    def test_write_png_uses_qt_file_metadata_when_python_path_check_lags(self):
+        original_isfile = self.controller.os.path.isfile
+        self.controller.os.path.isfile = lambda path: False
+        try:
+            self._write(save_result=False)
+        finally:
+            self.controller.os.path.isfile = original_isfile
 
     def test_write_png_rejects_false_save_with_missing_empty_or_invalid_reload(self):
         invalid_cases = (

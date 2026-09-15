@@ -9,10 +9,10 @@ import maya.cmds as cmds
 import maya.api.OpenMaya as om
 
 try:
-    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtCore import QFileInfo, QPointF, Qt
     from PySide6.QtGui import QColor, QImage, QPainter, QPen
 except ImportError:
-    from PySide2.QtCore import QPointF, Qt
+    from PySide2.QtCore import QFileInfo, QPointF, Qt
     from PySide2.QtGui import QColor, QImage, QPainter, QPen
 
 import composition_guides_core as core
@@ -395,7 +395,8 @@ def _geometry_options(settings):
 
 
 def _is_valid_written_png(path, width, height):
-    if not os.path.isfile(path) or os.path.getsize(path) <= 0:
+    file_info = QFileInfo(path)
+    if not file_info.exists() or file_info.size() <= 0:
         return False
     written = QImage(path)
     return (not written.isNull() and written.width() == width and
