@@ -10,6 +10,7 @@ import warnings
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE_FILES = (
+    "composition_guides.py",
     "composition_guides_core.py",
     "composition_guides_plugin.py",
 )
@@ -78,6 +79,49 @@ def _read_source(filename):
 
 
 class SourceCompatibilityTests(unittest.TestCase):
+
+    def test_controller_exposes_scene_and_render_entry_points(self):
+        path = os.path.join(PROJECT_ROOT, "composition_guides.py")
+        self.assertTrue(os.path.isfile(path), "missing composition_guides.py")
+        module = ast.parse(_read_source("composition_guides.py"))
+        functions = dict((node.name, node) for node in module.body
+                         if isinstance(node, ast.FunctionDef))
+        for name, arguments in (
+                ("resolve_selected_camera", []), ("find_config", ["camera_shape"]),
+                ("create_or_update", ["camera_shape", "settings"]),
+                ("set_visible", ["camera_shape", "visible"]),
+                ("remove", ["camera_shape"]), ("clean_cache", ["camera_shape"]),
+                ("refresh_render_overlay", ["camera_shape", "force"]),
+                ("install_render_hooks", []), ("remove_render_hooks", []),
+                ("_before_render", []), ("_after_render", []), ("show", [])):
+            self.assertIn(name, functions)
+            self.assertEqual(arguments, [arg.arg for arg in functions[name].args.args])
+        self.assertIn("GuideError", [node.name for node in module.body
+                                    if isinstance(node, ast.ClassDef)])
+
+    def test_controller_retains_overlay_integration_contract(self):
+        source = _read_source("composition_guides.py")
+        for token in ("OpenAI.CompositionGuides", "QImage.Format_ARGB32",
+                      "QPainter.Antialiasing", "defaultRenderGlobals.currentRenderer",
+                      "defaultRenderGlobals.preRenderMel", "defaultRenderGlobals.postRenderMel",
+                      "mayaHardware2", "CGUIDES_BEGIN", "CGUIDES_END",
+                      "MSceneMessage.kBeforeSave"):
+            self.assertIn(token, source)
+
+    def test_controller_chooses_qt_by_import_capability(self):
+        source = _read_source("composition_guides.py")
+        self.assertRegex(source, r"try:[\s\S]*?from PySide6[\s\S]*?except ImportError:[\s\S]*?from PySide2")
+        self.assertNotRegex(source, r"cmds\.about\([^)]*(?:version|apiVersion)")
+
+    def test_controller_does_not_delete_unvalidated_node_listings(self):
+        source = _read_source("composition_guides.py")
+        module = ast.parse(source)
+        for node in ast.walk(module):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "delete"):
+                self.assertEqual(1, len(node.args))
+                self.assertIsInstance(node.args[0], ast.Name)
+        self.assertNotRegex(source, r"cmds\.delete\(\s*cmds\.ls")
 
     def test_sources_parse_and_avoid_unsupported_python_syntax(self):
         for filename in SOURCE_FILES:
