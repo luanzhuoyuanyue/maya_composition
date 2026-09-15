@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import absolute_import
 
 import ast
@@ -79,6 +80,26 @@ def _read_source(filename):
 
 
 class SourceCompatibilityTests(unittest.TestCase):
+
+    def test_gui_exposes_native_controls_and_stable_keys(self):
+        source = _read_source("composition_guides.py")
+        module = ast.parse(source)
+        self.assertIn("CompositionGuidesWindow", [node.name for node in module.body
+                                               if isinstance(node, ast.ClassDef)])
+        for key in ("camera", "output_mode", "thirds", "spiral",
+                    "spiral_orientation", "triangle", "triangle_direction",
+                    "diagonal_down", "diagonal_up", "center_cross", "center_circle",
+                    "center_box", "center_diamond", "color", "alpha", "line_width"):
+            self.assertIn('"' + key + '"', source)
+        for control in ("window", "columnLayout", "frameLayout", "optionMenuGrp",
+                        "checkBoxGrp", "colorSliderGrp", "floatSliderGrp", "button"):
+            self.assertIn("cmds." + control + "(", source)
+
+    def test_gui_has_requested_actions_without_qt_widgets(self):
+        source = _read_source("composition_guides.py")
+        for label in (u"从选择获取", u"创建 / 更新", u"显示 / 隐藏", u"删除", u"清理缓存"):
+            self.assertIn(label, source)
+        self.assertNotRegex(source, r"\b(?:QWidget|QDialog|QMainWindow)\s*\(")
 
     def test_controller_exposes_scene_and_render_entry_points(self):
         path = os.path.join(PROJECT_ROOT, "composition_guides.py")
