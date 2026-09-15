@@ -1,7 +1,10 @@
 from __future__ import absolute_import
 
 import importlib
+import os
+import shutil
 import sys
+import tempfile
 import types
 import unittest
 
@@ -221,6 +224,143 @@ class ControllerRecoveryTests(unittest.TestCase):
         self.assertIn("badConfig", "\n".join(warnings))
         self.assertIn("plane display failed", "\n".join(warnings))
         self.assertIn("plane recovery hide failed", "\n".join(warnings))
+
+
+class _PngImage(object):
+    save_result = True
+    write_file = True
+    file_content = b"png"
+    reload_is_null = False
+    reload_width = 8
+    reload_height = 6
+    reload_has_alpha = True
+
+    def __init__(self, *arguments):
+        self.arguments = arguments
+
+    def fill(self, value):
+        pass
+
+    def save(self, path, format_name):
+        if self.write_file:
+            with open(path, "wb") as png_file:
+                png_file.write(self.file_content)
+        return self.save_result
+
+    def isNull(self):
+        return self.reload_is_null
+
+    def width(self):
+        return self.reload_width
+
+    def height(self):
+        return self.reload_height
+
+    def hasAlphaChannel(self):
+        return self.reload_has_alpha
+
+
+class _PngPainter(object):
+    def __init__(self, image):
+        self.image = image
+
+    def isActive(self):
+        return True
+
+    def setRenderHint(self, hint, enabled):
+        pass
+
+    def setPen(self, pen):
+        pass
+
+    def drawLine(self, start, end):
+        pass
+
+    def end(self):
+        pass
+
+
+class _PngPen(object):
+    def __init__(self, color):
+        self.color = color
+
+    def setWidthF(self, width):
+        pass
+
+    def setCapStyle(self, cap):
+        pass
+
+    def setJoinStyle(self, join):
+        pass
+
+
+class PngWriteValidationTests(unittest.TestCase):
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp(prefix="cg-png-test-")
+        self.addCleanup(shutil.rmtree, self.directory)
+        self.controller = _load_controller(_FakeCmds())
+        self.controller.QImage = _PngImage
+        self.controller.QPainter = _PngPainter
+        self.controller.QColor = lambda *values: values
+        self.controller.QPen = _PngPen
+        self.controller.QPointF = lambda *values: values
+        self.controller.core.compose_geometry = lambda options, width, height: {
+            "segments": [], "polylines": []}
+        self.settings = {
+            "width": 8, "height": 6, "pixelAspect": 1.0,
+            "thirds": False, "goldenSpiral": False, "spiralOrientation": 0,
+            "goldenTriangle": False, "triangleDirection": 0,
+            "diagonal": False, "diagonalDown": False, "diagonalUp": False,
+            "center": False, "centerCross": False, "centerCircle": False,
+            "centerBox": False, "centerDiamond": False,
+            "lineColor": (1.0, 1.0, 1.0), "lineAlpha": 1.0, "lineWidth": 1.0,
+        }
+
+    def _write(self, **overrides):
+        defaults = {
+            "save_result": True, "write_file": True, "file_content": b"png",
+            "reload_is_null": False, "reload_width": 8, "reload_height": 6,
+            "reload_has_alpha": True,
+        }
+        for name, value in defaults.items():
+            setattr(_PngImage, name, value)
+        for name, value in overrides.items():
+            setattr(_PngImage, name, value)
+        path = os.path.join(self.directory, "guide.png")
+        return self.controller._write_png(path, self.settings)
+
+    def tearDown(self):
+        _PngImage.save_result = True
+        _PngImage.write_file = True
+        _PngImage.file_content = b"png"
+        _PngImage.reload_is_null = False
+        _PngImage.reload_width = 8
+        _PngImage.reload_height = 6
+        _PngImage.reload_has_alpha = True
+
+    def test_write_png_accepts_true_save_with_valid_reloaded_file(self):
+        self._write(save_result=True)
+
+    def test_write_png_accepts_false_save_with_valid_reloaded_file(self):
+        self._write(save_result=False)
+
+    def test_write_png_rejects_false_save_with_missing_empty_or_invalid_reload(self):
+        invalid_cases = (
+            {"write_file": False},
+            {"file_content": b""},
+            {"reload_is_null": True},
+            {"reload_width": 7},
+            {"reload_height": 5},
+            {"reload_has_alpha": False},
+        )
+        for invalid in invalid_cases:
+            with self.assertRaises(self.controller.GuideError):
+                self._write(save_result=False, **invalid)
+
+    def test_write_png_rejects_true_save_with_invalid_file(self):
+        with self.assertRaises(self.controller.GuideError):
+            self._write(save_result=True, reload_is_null=True)
 
 
 if __name__ == "__main__":

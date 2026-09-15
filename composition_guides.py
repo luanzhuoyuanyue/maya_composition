@@ -394,6 +394,14 @@ def _geometry_options(settings):
     }
 
 
+def _is_valid_written_png(path, width, height):
+    if not os.path.isfile(path) or os.path.getsize(path) <= 0:
+        return False
+    written = QImage(path)
+    return (not written.isNull() and written.width() == width and
+            written.height() == height and written.hasAlphaChannel())
+
+
 def _write_png(path, settings):
     width, height = int(settings["width"]), int(settings["height"])
     if width <= 0 or height <= 0 or settings["pixelAspect"] <= 0:
@@ -421,8 +429,11 @@ def _write_png(path, settings):
                              QPointF(end[0] * (width - 1), (1.0 - end[1]) * (height - 1)))
     finally:
         painter.end()
-    if not image.save(path, "PNG") or not os.path.isfile(path) or os.path.getsize(path) <= 0:
+    save_succeeded = image.save(path, "PNG")
+    if not _is_valid_written_png(path, width, height):
         raise GuideError(u"构图 PNG 保存失败：%s" % path)
+    if not save_succeeded:
+        return
 
 
 def refresh_render_overlay(camera_shape, force=False):
