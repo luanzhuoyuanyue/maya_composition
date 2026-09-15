@@ -464,6 +464,10 @@ def _before_render():
                 cmds.setAttr(plane + ".visibility", True)
         except Exception as error:
             failures.append((config, error))
+            try:
+                _ordinary_state(config)
+            except Exception as recovery_error:
+                failures.append((config, recovery_error))
     _warn_config_failures(u"渲染准备", failures)
 
 

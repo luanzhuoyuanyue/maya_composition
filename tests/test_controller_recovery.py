@@ -10,6 +10,8 @@ class _FakeCmds(object):
 
     def __init__(self):
         self.calls = []
+        self.failure_for = None
+        self.values = {}
 
     def allNodeTypes(self):
         return []
@@ -19,8 +21,13 @@ class _FakeCmds(object):
 
     def setAttr(self, plug, value, **unused_keywords):
         self.calls.append((plug, value))
-        if plug == "badPlane.visibility":
-            raise RuntimeError("bad plane cannot be hidden")
+        if self.failure_for is not None:
+            message = self.failure_for(plug, value, self.calls)
+            if message is not None:
+                raise RuntimeError(message)
+
+    def getAttr(self, plug):
+        return self.values[plug]
 
     def warning(self, message):
         self.calls.append(("warning", message))
@@ -117,6 +124,10 @@ def _load_controller(fake_cmds):
 
 class ControllerRecoveryTests(unittest.TestCase):
 
+    @staticmethod
+    def _last_value(calls, plug):
+        return [value for candidate, value in calls if candidate == plug][-1]
+
     def test_multiplier_factor_uses_an_internal_mplug_value(self):
         fake_cmds = _FakeCmds()
         controller = _load_controller(fake_cmds)
@@ -131,6 +142,9 @@ class ControllerRecoveryTests(unittest.TestCase):
 
     def test_after_render_continues_after_a_plane_hide_failure(self):
         fake_cmds = _FakeCmds()
+        fake_cmds.failure_for = lambda plug, value, calls: (
+            "bad plane cannot be hidden"
+            if plug == "badPlane.visibility" and value is False else None)
         controller = _load_controller(fake_cmds)
         controller._configs = lambda: ["badConfig", "goodConfig"]
         controller._config_camera = lambda config: config
@@ -144,6 +158,51 @@ class ControllerRecoveryTests(unittest.TestCase):
         self.assertIn(("goodPlane.visibility", False), fake_cmds.calls)
         self.assertIn(("goodConfig.renderInProgress", False), fake_cmds.calls)
         self.assertTrue(any(call[0] == "warning" for call in fake_cmds.calls))
+
+    def test_before_render_recovers_display_failure_and_continues(self):
+        fake_cmds = _FakeCmds()
+
+        def failure_for(plug, value, calls):
+            previous = calls[:-1]
+            if plug == "badPlane.visibility" and value is True:
+                return "plane display failed"
+            if (plug == "badPlane.visibility" and value is False and
+                    ("badPlane.visibility", True) in previous):
+                return "plane recovery hide failed"
+            return None
+
+        fake_cmds.failure_for = failure_for
+        fake_cmds.values = {
+            "defaultRenderGlobals.currentRenderer": "mayaHardware2",
+            "badConfig.enabled": True,
+            "goodConfig.enabled": True,
+            "badConfig.outputMode": 1,
+            "goodConfig.outputMode": 1,
+        }
+        controller = _load_controller(fake_cmds)
+        controller._configs = lambda: ["badConfig", "goodConfig"]
+        controller._config_camera = lambda config: config
+        controller._dependency = lambda config, kind: {
+            "badConfig": "badPlane", "goodConfig": "goodPlane",
+        }.get(config) if kind == "imagePlane" else None
+        controller.refresh_render_overlay = lambda camera: camera
+
+        controller._before_render()
+
+        self.assertEqual(
+            False, self._last_value(fake_cmds.calls,
+                                    "badConfig.renderInProgress"))
+        self.assertEqual(
+            True, self._last_value(fake_cmds.calls,
+                                   "goodConfig.renderInProgress"))
+        self.assertEqual(
+            True, self._last_value(fake_cmds.calls,
+                                   "goodPlane.visibility"))
+        warnings = [message for plug, message in fake_cmds.calls
+                    if plug == "warning"]
+        self.assertIn("badConfig", "\n".join(warnings))
+        self.assertIn("plane display failed", "\n".join(warnings))
+        self.assertIn("plane recovery hide failed", "\n".join(warnings))
 
 
 if __name__ == "__main__":
