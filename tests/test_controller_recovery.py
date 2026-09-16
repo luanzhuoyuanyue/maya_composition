@@ -111,6 +111,17 @@ def _load_controller(fake_cmds):
             except OSError:
                 return 0
 
+    class QFile(object):
+
+        @staticmethod
+        def remove(path):
+            try:
+                os.remove(path)
+                return True
+            except OSError:
+                return False
+
+    qt_core.QFile = QFile
     qt_core.QFileInfo = QFileInfo
     qt_core.QPointF = object
     qt_core.Qt = Qt
@@ -243,6 +254,22 @@ class ControllerRecoveryTests(unittest.TestCase):
         self.assertIn("badConfig", "\n".join(warnings))
         self.assertIn("plane display failed", "\n".join(warnings))
         self.assertIn("plane recovery hide failed", "\n".join(warnings))
+
+    def test_before_render_warns_and_does_not_change_other_renderer(self):
+        fake_cmds = _FakeCmds()
+        fake_cmds.values = {
+            "defaultRenderGlobals.currentRenderer": "arnold",
+        }
+        controller = _load_controller(fake_cmds)
+
+        controller._before_render()
+
+        warnings = [message for plug, message in fake_cmds.calls
+                    if plug == "warning"]
+        self.assertIn("Maya Hardware 2.0", "\n".join(warnings))
+        self.assertFalse(any(
+            plug == "defaultRenderGlobals.currentRenderer"
+            for plug, value in fake_cmds.calls if plug != "warning"))
 
 
 class _PngImage(object):
@@ -417,6 +444,13 @@ class PngWriteValidationTests(unittest.TestCase):
 
     def test_write_png_accepts_false_save_with_valid_reloaded_file(self):
         self._write(save_result=False)
+
+    def test_write_png_rejects_stale_valid_file_after_failed_save(self):
+        path = os.path.join(self.directory, "guide.png")
+        with open(path, "wb") as png_file:
+            png_file.write(b"old-valid-png")
+        with self.assertRaises(self.controller.GuideError):
+            self._write(save_result=False, write_file=False)
 
     def test_write_png_uses_qt_file_metadata_when_python_path_check_lags(self):
         original_isfile = self.controller.os.path.isfile

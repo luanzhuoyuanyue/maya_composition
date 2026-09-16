@@ -9,10 +9,10 @@ import maya.cmds as cmds
 import maya.api.OpenMaya as om
 
 try:
-    from PySide6.QtCore import QFileInfo, QPointF, Qt
+    from PySide6.QtCore import QFile, QFileInfo, QPointF, Qt
     from PySide6.QtGui import QColor, QImage, QPainter, QPen
 except ImportError:
-    from PySide2.QtCore import QFileInfo, QPointF, Qt
+    from PySide2.QtCore import QFile, QFileInfo, QPointF, Qt
     from PySide2.QtGui import QColor, QImage, QPainter, QPen
 
 import composition_guides_core as core
@@ -437,6 +437,8 @@ def _write_png(path, settings):
                              QPointF(end[0] * (width - 1), (1.0 - end[1]) * (height - 1)))
     finally:
         painter.end()
+    if QFileInfo(path).exists() and not QFile.remove(path):
+        raise GuideError(u"无法替换构图 PNG：%s" % path)
     save_succeeded = image.save(path, "PNG")
     if not _is_valid_written_png(path, width, height):
         raise GuideError(u"构图 PNG 保存失败：%s" % path)
@@ -493,6 +495,7 @@ def remove_render_hooks():
 
 def _before_render():
     if cmds.getAttr("defaultRenderGlobals.currentRenderer") != RENDERER:
+        cmds.warning(u"构图辅助线仅支持 Maya Hardware 2.0；本次渲染已跳过。")
         return
     failures = []
     for config in _configs():

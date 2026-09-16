@@ -27,9 +27,9 @@ def thirds_geometry():
 def diagonal_geometry(downward, upward):
     geometry = empty_geometry()
     if downward:
-        geometry["segments"].append(((0.0, 0.0), (1.0, 1.0)))
-    if upward:
         geometry["segments"].append(((0.0, 1.0), (1.0, 0.0)))
+    if upward:
+        geometry["segments"].append(((0.0, 0.0), (1.0, 1.0)))
     return geometry
 
 

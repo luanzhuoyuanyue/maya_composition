@@ -21,6 +21,14 @@ class CoreGeometryTests(unittest.TestCase):
             ((0.0, 2.0 / 3.0), (1.0, 2.0 / 3.0)),
         ])
 
+    def test_diagonal_directions_match_top_down_screen_labels(self):
+        self.assertEqual(
+            core.diagonal_geometry(True, False)["segments"],
+            [((0.0, 1.0), (1.0, 0.0))])
+        self.assertEqual(
+            core.diagonal_geometry(False, True)["segments"],
+            [((0.0, 0.0), (1.0, 1.0))])
+
     def test_center_box_is_width_and_height_25_percent(self):
         geometry = core.center_geometry(False, False, True, False)
         self.assertEqual(geometry["segments"], [
