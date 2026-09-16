@@ -259,8 +259,11 @@ class ControllerRecoveryTests(unittest.TestCase):
         fake_cmds = _FakeCmds()
         fake_cmds.values = {
             "defaultRenderGlobals.currentRenderer": "arnold",
+            "guideConfig.enabled": True,
+            "guideConfig.outputMode": 1,
         }
         controller = _load_controller(fake_cmds)
+        controller._configs = lambda: ["guideConfig"]
 
         controller._before_render()
 
@@ -270,6 +273,22 @@ class ControllerRecoveryTests(unittest.TestCase):
         self.assertFalse(any(
             plug == "defaultRenderGlobals.currentRenderer"
             for plug, value in fake_cmds.calls if plug != "warning"))
+
+    def test_before_render_stays_quiet_without_active_hardware_overlay(self):
+        fake_cmds = _FakeCmds()
+        fake_cmds.values = {
+            "defaultRenderGlobals.currentRenderer": "arnold",
+            "viewportConfig.enabled": True,
+            "viewportConfig.outputMode": 0,
+            "hiddenConfig.enabled": False,
+            "hiddenConfig.outputMode": 2,
+        }
+        controller = _load_controller(fake_cmds)
+        controller._configs = lambda: ["viewportConfig", "hiddenConfig"]
+
+        controller._before_render()
+
+        self.assertFalse(any(plug == "warning" for plug, value in fake_cmds.calls))
 
 
 class _PngImage(object):

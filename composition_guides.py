@@ -494,11 +494,15 @@ def remove_render_hooks():
 
 
 def _before_render():
+    configs = _configs()
     if cmds.getAttr("defaultRenderGlobals.currentRenderer") != RENDERER:
-        cmds.warning(u"构图辅助线仅支持 Maya Hardware 2.0；本次渲染已跳过。")
+        if any(cmds.getAttr(config + ".enabled") and
+               cmds.getAttr(config + ".outputMode") in (1, 2)
+               for config in configs):
+            cmds.warning(u"构图辅助线仅支持 Maya Hardware 2.0；本次渲染已跳过。")
         return
     failures = []
-    for config in _configs():
+    for config in configs:
         try:
             _ordinary_state(config)
             if (cmds.getAttr(config + ".enabled") and
